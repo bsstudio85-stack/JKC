@@ -344,17 +344,15 @@ async function saveScores(){
   for(var pi=0;pi<players.length;pi++){
     var player=players[pi];
     var holes=[];
-    var hasAnyValue=false;
     for(var h=0;h<18;h++){
       var el=document.getElementById("ip"+pi+"h"+h);
       var raw=el?el.value.trim():"";
       var num=raw?parseInt(raw.replace(/[^0-9]/g,""),10):NaN;
       var val=(!isNaN(num)&&num>0)?num:"";
       holes.push(val);
-      if(val!=="")hasAnyValue=true;
     }
-    // 이 플레이어 칸에 값이 하나라도 있으면 저장
-    if(hasAnyValue){gS[player]=holes;}
+    // ★ 화면에 칸이 보이는 플레이어는 무조건 저장 (지우기 반영을 위해)
+    gS[player]=holes;
   }
 
   allScores[currentGroup]=gS;
