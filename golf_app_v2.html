@@ -256,7 +256,7 @@ function setSyncStatus(mode){const dot=document.getElementById("sync-dot"),text=
 async function postToSheets(gn,ps){if(!SCRIPT_URL)return false;setSyncStatus("syncing");try{await fetch(SCRIPT_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"application/json"},body:JSON.stringify({group:gn,scores:ps})});setSyncStatus("live");return true;}catch(e){setSyncStatus("error");return false;}}
 async function fetchFromSheets(){if(!SCRIPT_URL)return null;setSyncStatus("syncing");try{const res=await fetch(SCRIPT_URL+"?action=all");const data=await res.json();setSyncStatus("live");return data;}catch(e){setSyncStatus("error");return null;}}
 function nav(screen){document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active"));document.getElementById("screen-"+screen).classList.add("active");const nb=document.getElementById("nav-"+screen);if(nb)nb.classList.add("active");if(screen==="home")renderHome();if(screen==="lb")renderLb();if(screen==="teams")renderTeams();if(screen==="setup")renderSetup();if(screen==="stats")renderStats();}
-function openGroup(name){currentGroup=name;document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active"));document.getElementById("screen-score").classList.add("active");document.getElementById("nav-home").classList.add("active");document.getElementById("score-title").textContent=name;renderScoreEntry(name);}
+function openGroup(name){currentGroup=name;try{sessionStorage.setItem("lastGroup",name);}catch(e){}document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active"));document.getElementById("screen-score").classList.add("active");document.getElementById("nav-home").classList.add("active");document.getElementById("score-title").textContent=name;renderScoreEntry(name);}
 function renderHome(){const allScores=loadLocal();const grid=document.getElementById("group-grid");grid.innerHTML="";Object.entries(GROUPS).forEach(([gname,players])=>{const gS=allScores[gname]||{};let filled=0,total=players.length*18;players.forEach(p=>(gS[p]||[]).forEach(h=>{if(h)filled++;}));const pct=total>0?filled/total:0;const stCls=pct===0?"":pct===1?"done":"partial";
 const card=document.createElement("button");
 card.className="group-card";
@@ -337,17 +337,21 @@ async function saveScores(){
   for(var pi=0;pi<players.length;pi++){
     var player=players[pi];
     var holes=[];
-    var hasInput=false;
+    var hasChanged=false;
+    var origPlayer=_origValues[pi]||{};
     for(var h=0;h<18;h++){
       var el=document.getElementById("ip"+pi+"h"+h);
       var raw=el?el.value.trim():"";
       var num=raw?parseInt(raw.replace(/[^0-9]/g,""),10):NaN;
       var val=(!isNaN(num)&&num>0)?num:"";
       holes.push(val);
-      if(val!=="")hasInput=true;
+      // ★ 실제로 변경된 경우만 감지 (원본값과 비교)
+      var origVal=String(origPlayer[h]!==undefined?origPlayer[h]:"");
+      var newVal=String(val);
+      if(newVal!==origVal)hasChanged=true;
     }
-    // ★ 입력값이 있는 플레이어만 업데이트 (빈 칸이면 기존 데이터 보존)
-    if(hasInput){gS[player]=holes;}
+    // ★ 실제 변경이 있는 플레이어만 업데이트 (다른 사람 스코어 보호)
+    if(hasChanged){gS[player]=holes;}
   }
 
   allScores[currentGroup]=gS;
@@ -669,10 +673,20 @@ setInterval(async () => {
     const remote = await fetchFromSheets();
     if (remote && !remote.error) {
       saveLocal(remote);
-      refreshCurrentScreen(); // ← 저장 후 즉시 현재 화면 갱신
+      refreshCurrentScreen();
     }
   } catch(e) {}
 }, 15000);
+
+// ★ 앱 초기화
+renderHome();
+setSyncStatus(SCRIPT_URL?"live":"offline");
+
+// ★ 리프레시 후 마지막으로 보던 조 자동 복원
+try {
+  var lastGroup = sessionStorage.getItem("lastGroup");
+  if (lastGroup && GROUPS[lastGroup]) { openGroup(lastGroup); }
+} catch(e) {}
 </script>
 
 
