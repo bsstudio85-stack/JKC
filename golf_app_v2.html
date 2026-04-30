@@ -336,16 +336,7 @@ async function saveScores(){
   btn.disabled=true;btn.textContent="저장 중...";
   if(!currentGroup){btn.disabled=false;btn.textContent="💾 저장 및 전송";return;}
 
-  // ★ 저장 전 Google Sheets 최신 데이터 먼저 가져오기 (3초 타임아웃)
-  if(SCRIPT_URL){
-    try{
-      var fetchPromise=fetchFromSheets();
-      var timeoutPromise=new Promise(function(resolve){setTimeout(function(){resolve(null);},3000);});
-      var remote=await Promise.race([fetchPromise,timeoutPromise]);
-      if(remote&&!remote.error){saveLocal(remote);}
-    }catch(e){}
-  }
-
+  // 현재 화면에서 입력값 수집
   var allScores=loadLocal();
   var gS=allScores[currentGroup]||{};
   var players=GROUPS[currentGroup];
@@ -353,26 +344,32 @@ async function saveScores(){
   for(var pi=0;pi<players.length;pi++){
     var player=players[pi];
     var holes=[];
-    var hasChanged=false;
-    var origPlayer=_origValues[pi]||{};
+    var hasAnyValue=false;
     for(var h=0;h<18;h++){
       var el=document.getElementById("ip"+pi+"h"+h);
       var raw=el?el.value.trim():"";
       var num=raw?parseInt(raw.replace(/[^0-9]/g,""),10):NaN;
       var val=(!isNaN(num)&&num>0)?num:"";
       holes.push(val);
-      // ★ 실제로 변경된 경우만 감지 (원본값과 비교)
-      var origVal=String(origPlayer[h]!==undefined?origPlayer[h]:"");
-      var newVal=String(val);
-      if(newVal!==origVal)hasChanged=true;
+      if(val!=="")hasAnyValue=true;
     }
-    // ★ 실제 변경이 있는 플레이어만 업데이트 (다른 사람 스코어 보호)
-    if(hasChanged){gS[player]=holes;}
+    // 이 플레이어 칸에 값이 하나라도 있으면 저장
+    if(hasAnyValue){gS[player]=holes;}
   }
 
   allScores[currentGroup]=gS;
   saveLocal(allScores);
-  var ok=await postToSheets(currentGroup,gS);
+
+  // Google Sheets 전송 (5초 타임아웃)
+  var ok=false;
+  if(SCRIPT_URL){
+    try{
+      var postP=postToSheets(currentGroup,gS);
+      var timeP=new Promise(function(res){setTimeout(function(){res(false);},5000);});
+      ok=await Promise.race([postP,timeP]);
+    }catch(e){ok=false;}
+  }
+
   showToast(ok?"✅ 저장 완료 — Google Sheets 전송됨!":"💾 기기에 저장됨");
   btn.disabled=false;btn.textContent="💾 저장 및 전송";
   renderHome();
