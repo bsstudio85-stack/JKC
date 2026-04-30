@@ -336,6 +336,33 @@ async function saveScores(){
   btn.disabled=true;btn.textContent="저장 중...";
   if(!currentGroup){btn.disabled=false;btn.textContent="💾 저장 및 전송";return;}
 
+  // ★ Sheets 최신 데이터와 merge (3초 타임아웃)
+  if(SCRIPT_URL){
+    try{
+      var fp=fetchFromSheets();
+      var tp=new Promise(function(r){setTimeout(function(){r(null);},3000);});
+      var remote=await Promise.race([fp,tp]);
+      if(remote&&!remote.error){
+        var local=loadLocal();
+        var merged=Object.assign({},remote);
+        Object.keys(local).forEach(function(g){
+          if(!merged[g])merged[g]={};
+          Object.keys(local[g]).forEach(function(p){
+            var lh=local[g][p]||[];
+            var rh=merged[g][p]||[];
+            var fh=[];
+            for(var i=0;i<18;i++){
+              var lv=lh[i]!==undefined?lh[i]:"";
+              var rv=rh[i]||"";
+              fh.push(lv!==""?lv:rv);
+            }
+            merged[g][p]=fh;
+          });
+        });
+        saveLocal(merged);
+      }
+    }catch(e){}
+  }
   // 현재 화면에서 입력값 수집
   var allScores=loadLocal();
   var gS=allScores[currentGroup]||{};
@@ -683,7 +710,26 @@ setInterval(async () => {
   try {
     const remote = await fetchFromSheets();
     if (remote && !remote.error) {
-      saveLocal(remote);
+      // ★ 덮어쓰지 않고 merge: localStorage + Sheets 합치기
+      // localStorage 데이터가 더 최신일 수 있으므로 우선순위 높음
+      var local = loadLocal();
+      var merged = Object.assign({}, remote);
+      Object.keys(local).forEach(function(group){
+        if(!merged[group]) merged[group] = {};
+        Object.keys(local[group]).forEach(function(player){
+          var localHoles = local[group][player];
+          var remoteHoles = merged[group][player]||[];
+          // 로컬에 값이 있는 홀은 로컬 우선
+          var finalHoles = [];
+          for(var h=0;h<18;h++){
+            var lv = localHoles?localHoles[h]:"";
+            var rv = remoteHoles[h]||"";
+            finalHoles.push(lv!==""?lv:rv);
+          }
+          merged[group][player] = finalHoles;
+        });
+      });
+      saveLocal(merged);
       refreshCurrentScreen();
     }
   } catch(e) {}
