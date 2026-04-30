@@ -322,10 +322,12 @@ async function saveScores(){
   btn.disabled=true;btn.textContent="저장 중...";
   if(!currentGroup){btn.disabled=false;btn.textContent="💾 저장 및 전송";return;}
 
-  // ★ 저장 전 Google Sheets 최신 데이터 먼저 가져오기 (다른 사람 스코어 보존)
+  // ★ 저장 전 Google Sheets 최신 데이터 먼저 가져오기 (3초 타임아웃)
   if(SCRIPT_URL){
     try{
-      var remote=await fetchFromSheets();
+      var fetchPromise=fetchFromSheets();
+      var timeoutPromise=new Promise(function(resolve){setTimeout(function(){resolve(null);},3000);});
+      var remote=await Promise.race([fetchPromise,timeoutPromise]);
       if(remote&&!remote.error){saveLocal(remote);}
     }catch(e){}
   }
