@@ -233,6 +233,7 @@ const PLAYER_TEAM={};
 Object.entries(TEAMS).forEach(([t,ms])=>ms.forEach(m=>PLAYER_TEAM[m]=t));
 const LS_SCORES="golf26_scores",LS_URL="golf26_url";
 let SCRIPT_URL=localStorage.getItem(LS_URL)||"",currentGroup=null,lbTab="indiv";
+var _lastSaveTime=0,_lastSaveGroup=null; // 최근 저장 추적
 
 // ═══ 신페리오 엔진 (비밀 고정홀) ═══
 // 파3: 3,6,13,17홀 / 파4: 2,7,11,12,14홀 / 파5: 4,9,18홀
@@ -336,31 +337,13 @@ async function saveScores(){
   btn.disabled=true;btn.textContent="저장 중...";
   if(!currentGroup){btn.disabled=false;btn.textContent="💾 저장 및 전송";return;}
 
-  // ★ Sheets 최신 데이터와 merge (3초 타임아웃)
+  // ★ 저장 전 Sheets 최신 데이터 가져오기 (3초 타임아웃, Sheets 우선)
   if(SCRIPT_URL){
     try{
       var fp=fetchFromSheets();
       var tp=new Promise(function(r){setTimeout(function(){r(null);},3000);});
       var remote=await Promise.race([fp,tp]);
-      if(remote&&!remote.error){
-        var local=loadLocal();
-        var merged=Object.assign({},remote);
-        Object.keys(local).forEach(function(g){
-          if(!merged[g])merged[g]={};
-          Object.keys(local[g]).forEach(function(p){
-            var lh=local[g][p]||[];
-            var rh=merged[g][p]||[];
-            var fh=[];
-            for(var i=0;i<18;i++){
-              var lv=lh[i]!==undefined?lh[i]:"";
-              var rv=rh[i]||"";
-              fh.push(lv!==""?lv:rv);
-            }
-            merged[g][p]=fh;
-          });
-        });
-        saveLocal(merged);
-      }
+      if(remote&&!remote.error){saveLocal(remote);}
     }catch(e){}
   }
   // 현재 화면에서 입력값 수집
@@ -395,6 +378,8 @@ async function saveScores(){
     }catch(e){ok=false;}
   }
 
+  _lastSaveTime = Date.now();
+  _lastSaveGroup = currentGroup;
   showToast(ok?"✅ 저장 완료 — Google Sheets 전송됨!":"💾 기기에 저장됨");
   btn.disabled=false;btn.textContent="💾 저장 및 전송";
   renderHome();
@@ -591,19 +576,28 @@ function renderStats() {
   const totT = filtered.reduce((s,r)=>s+r.triple,0);
   const totY = filtered.reduce((s,r)=>s+r.yap,0);
 
-  const topBirdie = filtered.reduce((best,r) => r.birdie > (best?.birdie||0) ? r : best, null);
   const topEagle  = filtered.reduce((best,r) => r.eagle  > (best?.eagle||0)  ? r : best, null);
+  const topBirdie = filtered.reduce((best,r) => r.birdie > (best?.birdie||0) ? r : best, null);
   const topPar    = filtered.reduce((best,r) => r.par    > (best?.par||0)    ? r : best, null);
   const topBogey  = filtered.reduce((best,r) => r.bogey  > (best?.bogey||0)  ? r : best, null);
+  const topDouble = filtered.reduce((best,r) => r.double > (best?.double||0) ? r : best, null);
+  const topTriple = filtered.reduce((best,r) => r.triple > (best?.triple||0) ? r : best, null);
+  const topYap    = filtered.reduce((best,r) => r.yap    > (best?.yap||0)    ? r : best, null);
+
+  // 각 카테고리 top 선수 이름 + 개인 횟수 표시
+  function topInfo(top, key) {
+    if(!top || top[key]===0) return '-';
+    return top.player + '<br><span style="font-size:10px;color:var(--gold)">' + top[key] + '회</span>';
+  }
 
   document.getElementById('stats-summary').innerHTML = `
-    <div class="stat-sum-card"><div class="stat-sum-label">🦅 이글</div><div class="stat-sum-val" style="color:#ffe066">${totE}</div><div class="stat-sum-top">${totE>0?topEagle.player:'-'}</div></div>
-    <div class="stat-sum-card"><div class="stat-sum-label">🐦 버디</div><div class="stat-sum-val" style="color:#7ef0a8">${totB}</div><div class="stat-sum-top">${totB>0?topBirdie.player:'-'}</div></div>
-    <div class="stat-sum-card"><div class="stat-sum-label">⛳ 파</div><div class="stat-sum-val" style="color:var(--text)">${totP}</div><div class="stat-sum-top">${totP>0?topPar.player:'-'}</div></div>
-    <div class="stat-sum-card"><div class="stat-sum-label">🟠 보기</div><div class="stat-sum-val" style="color:#ffaa55">${totBo}</div><div class="stat-sum-top">${totBo>0?topBogey.player:'-'}</div></div>
-    <div class="stat-sum-card"><div class="stat-sum-label">🔴 더블</div><div class="stat-sum-val" style="color:#ff7070">${totD}</div><div class="stat-sum-top">전체</div></div>
-    <div class="stat-sum-card"><div class="stat-sum-label">💀 트리플</div><div class="stat-sum-val" style="color:#ff5555">${totT}</div><div class="stat-sum-top">전체</div></div>
-    <div class="stat-sum-card"><div class="stat-sum-label">🔥 양파+</div><div class="stat-sum-val" style="color:#ff3333">${totY}</div><div class="stat-sum-top">전체</div></div>
+    <div class="stat-sum-card"><div class="stat-sum-label">🦅 이글</div><div class="stat-sum-val" style="color:#ffe066">${totE}</div><div class="stat-sum-top">${topInfo(topEagle,'eagle')}</div></div>
+    <div class="stat-sum-card"><div class="stat-sum-label">🐦 버디</div><div class="stat-sum-val" style="color:#7ef0a8">${totB}</div><div class="stat-sum-top">${topInfo(topBirdie,'birdie')}</div></div>
+    <div class="stat-sum-card"><div class="stat-sum-label">⛳ 파</div><div class="stat-sum-val" style="color:var(--text)">${totP}</div><div class="stat-sum-top">${topInfo(topPar,'par')}</div></div>
+    <div class="stat-sum-card"><div class="stat-sum-label">🟠 보기</div><div class="stat-sum-val" style="color:#ffaa55">${totBo}</div><div class="stat-sum-top">${topInfo(topBogey,'bogey')}</div></div>
+    <div class="stat-sum-card"><div class="stat-sum-label">🔴 더블</div><div class="stat-sum-val" style="color:#ff7070">${totD}</div><div class="stat-sum-top">${topInfo(topDouble,'double')}</div></div>
+    <div class="stat-sum-card"><div class="stat-sum-label">💀 트리플</div><div class="stat-sum-val" style="color:#ff5555">${totT}</div><div class="stat-sum-top">${topInfo(topTriple,'triple')}</div></div>
+    <div class="stat-sum-card"><div class="stat-sum-label">🔥 양파+</div><div class="stat-sum-val" style="color:#ff3333">${totY}</div><div class="stat-sum-top">${topInfo(topYap,'yap')}</div></div>
     <div class="stat-sum-card"><div class="stat-sum-label">입력 완료</div><div class="stat-sum-val" style="color:var(--gold)">${filtered.length}</div><div class="stat-sum-top">명</div></div>
   `;
 
@@ -710,26 +704,22 @@ setInterval(async () => {
   try {
     const remote = await fetchFromSheets();
     if (remote && !remote.error) {
-      // ★ 덮어쓰지 않고 merge: localStorage + Sheets 합치기
-      // localStorage 데이터가 더 최신일 수 있으므로 우선순위 높음
-      var local = loadLocal();
-      var merged = Object.assign({}, remote);
-      Object.keys(local).forEach(function(group){
-        if(!merged[group]) merged[group] = {};
-        Object.keys(local[group]).forEach(function(player){
-          var localHoles = local[group][player];
-          var remoteHoles = merged[group][player]||[];
-          // 로컬에 값이 있는 홀은 로컬 우선
-          var finalHoles = [];
-          for(var h=0;h<18;h++){
-            var lv = localHoles?localHoles[h]:"";
-            var rv = remoteHoles[h]||"";
-            finalHoles.push(lv!==""?lv:rv);
-          }
-          merged[group][player] = finalHoles;
-        });
-      });
-      saveLocal(merged);
+      // ★ Sheets 데이터를 신뢰 (덮어쓰기)
+      // 단, 30초 이내에 저장한 데이터는 로컬 보호
+      var now = Date.now();
+      if(now - _lastSaveTime > 30000) {
+        // 30초 이상 지났으면 Sheets 데이터로 덮어씀
+        saveLocal(remote);
+      } else {
+        // 30초 이내면 로컬 저장 데이터 보호하면서 나머지만 업데이트
+        var local = loadLocal();
+        var merged = Object.assign({}, remote);
+        // 최근 저장한 조 데이터는 로컬 유지
+        if(_lastSaveGroup && local[_lastSaveGroup]) {
+          merged[_lastSaveGroup] = local[_lastSaveGroup];
+        }
+        saveLocal(merged);
+      }
       refreshCurrentScreen();
     }
   } catch(e) {}
