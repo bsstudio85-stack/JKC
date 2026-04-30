@@ -155,19 +155,19 @@ input[type=number]{-moz-appearance:textfield}
 </div>
 <div class="screen" id="screen-score">
   <div class="score-header">
-    <button class="back-btn" onclick="nav('home')">←</button>
+    <button class="back-btn" data-action="back">←</button>
     <div class="score-header-info">
       <h2 id="score-title">조</h2>
       <p>홀별 타수 입력 (1–18홀)</p>
     </div>
   </div>
   <div id="score-content"></div>
-  <button class="save-btn" id="save-btn" onclick="saveScores()">💾 저장 및 전송</button>
+  <button class="save-btn" id="save-btn" data-action="save">💾 저장 및 전송</button>
 </div>
 <div class="screen" id="screen-lb">
   <div class="tab-row">
-    <button class="tab active" id="tab-indiv" onclick="switchTab('indiv')">🏅 개인전</button>
-    <button class="tab" id="tab-team" onclick="switchTab('team')">🦁 팀전 LIV</button>
+    <button class="tab active" id="tab-indiv" data-action="tab" data-arg="indiv">🏅 개인전</button>
+    <button class="tab" id="tab-team" data-action="tab" data-arg="team">🦁 팀전 LIV</button>
   </div>
   <div id="lb-content" style="margin-top:10px"></div>
 </div>
@@ -188,8 +188,8 @@ input[type=number]{-moz-appearance:textfield}
       <li>URL을 아래에 붙여넣기</li>
     </ol>
     <input class="setup-input" id="url-input" placeholder="https://script.google.com/macros/s/..." type="url">
-    <button class="setup-btn" onclick="saveUrl()">✅ 연동 저장</button>
-    <div class="skip-link" onclick="skipSetup()">나중에 설정 (오프라인 모드로 계속)</div>
+    <button class="setup-btn" data-action="saveUrl">✅ 연동 저장</button>
+    <div class="skip-link" data-action="skipSetup">나중에 설정 (오프라인 모드로 계속)</div>
   </div>
 </div>
 <div class="screen" id="screen-stats">
@@ -214,11 +214,11 @@ input[type=number]{-moz-appearance:textfield}
   </div>
 </div>
 <nav class="bottom-nav">
-  <button class="nav-btn active" id="nav-home" onclick="nav('home')"><span class="icon">🏠</span>조 선택</button>
-  <button class="nav-btn" id="nav-lb" onclick="nav('lb')"><span class="icon">🏆</span>리더보드</button>
-  <button class="nav-btn" id="nav-stats" onclick="nav('stats')"><span class="icon">📊</span>스탯</button>
-  <button class="nav-btn" id="nav-teams" onclick="nav('teams')"><span class="icon">🦁</span>팀전</button>
-  <button class="nav-btn" id="nav-setup" onclick="nav('setup')"><span class="icon">⚙️</span>설정</button>
+  <button class="nav-btn active" id="nav-home" data-action="nav" data-arg="home"><span class="icon">🏠</span>조 선택</button>
+  <button class="nav-btn" id="nav-lb" data-action="nav" data-arg="lb"><span class="icon">🏆</span>리더보드</button>
+  <button class="nav-btn" id="nav-stats" data-action="nav" data-arg="stats"><span class="icon">📊</span>스탯</button>
+  <button class="nav-btn" id="nav-teams" data-action="nav" data-arg="teams"><span class="icon">🦁</span>팀전</button>
+  <button class="nav-btn" id="nav-setup" data-action="nav" data-arg="setup"><span class="icon">⚙️</span>설정</button>
 </nav>
 <div class="toast" id="toast"></div>
 <script>
@@ -259,8 +259,8 @@ card.className="group-card";
 card.type="button";
 card.style.cssText="width:100%;text-align:left;font-family:'Noto Sans KR',sans-serif;border:1.5px solid var(--border);";
 card.innerHTML=`<div class="group-status ${stCls}"></div><div class="group-num">${gname}</div><div class="group-players">${players.join(" · ")}</div>${pct>0?`<div class="group-pct">입력 ${Math.round(pct*100)}%</div>`:""}`;
-card.addEventListener('click', function(e){e.preventDefault();openGroup(gname);},{passive:false});
-card.addEventListener('touchend', function(e){e.preventDefault();openGroup(gname);},{passive:false});
+card.dataset.action='openGroup';
+card.dataset.arg=gname;
 grid.appendChild(card);});}
 function renderScoreEntry(gname){const players=GROUPS[gname];const allScores=loadLocal();const gS=allScores[gname]||{};const content=document.getElementById("score-content");content.innerHTML="";players.forEach(player=>{const saved=gS[player]||Array(18).fill("");const gross=saved.reduce((s,v)=>s+(parseInt(v)||0),0);const pk=player.replace(/\s/g,"_");const block=document.createElement("div");block.className="player-block";block.innerHTML=`<div class="player-bar"><span class="pname">${player}</span><span class="gross-badge" id="g_${pk}">${gross||"—"}</span></div><div class="hole-grid" id="hg_${pk}"></div>`;content.appendChild(block);const hg=block.querySelector(".hole-grid");for(let h=0;h<18;h++){const v=saved[h]!==undefined?saved[h]:"";const sc=scoreClass(v,PARS[h]);const cell=document.createElement("div");cell.className="hole-cell";cell.innerHTML=`<span class="hole-label">H${h+1}</span><span class="hole-par">P${PARS[h]}</span><input type="number" min="1" max="15" class="hole-input ${sc}" id="i_${pk}_${h}" value="${v}" inputmode="numeric" oninput="onInput('${player}',${h},this)">`;hg.appendChild(cell);}});}
 function scoreClass(v,par){if(!v&&v!==0)return"";const n=parseInt(v);if(isNaN(n))return"";if(n<=par-2)return"eagle";if(n===par-1)return"birdie";if(n===par)return"par-sc";if(n===par+1)return"bogey";return"dbl";}
@@ -494,49 +494,49 @@ function renderStats(){
 function statsTeam(el,team){statsTeamFilter=team;renderStats();}
 function statCat(el,cat){statsCat=cat;document.querySelectorAll('.scat').forEach(b=>b.classList.remove('on'));el.classList.add('on');renderStats();}
 
-// ═══ SAFARI-COMPATIBLE EVENT BINDING ═══
-function bindBtn(id,fn){
-  const el=document.getElementById(id);
-  if(!el)return;
-  const clone=el.cloneNode(true);
-  el.parentNode.replaceChild(clone,el);
-  const fresh=document.getElementById(id);
-  fresh.addEventListener('click',function(e){e.preventDefault();fn();},{passive:false});
-  fresh.addEventListener('touchend',function(e){e.preventDefault();fn();},{passive:false});
+// ═══ 이벤트 위임 방식 (새로고침 후에도 항상 작동) ═══
+function handleTap(e){
+  if(e.type==='click'&&e._handled)return;
+  const btn=e.target.closest('[data-action]');
+  if(!btn)return;
+  e.preventDefault();
+  if(e.type==='touchend')e._handled=true;
+  const action=btn.dataset.action;
+  const arg=btn.dataset.arg;
+  switch(action){
+    case 'nav':       nav(arg); break;
+    case 'tab':       switchTab(arg); break;
+    case 'save':      saveScores(); break;
+    case 'saveUrl':   saveUrl(); break;
+    case 'skipSetup': skipSetup(); break;
+    case 'back':      nav('home'); break;
+    case 'openGroup': openGroup(arg); break;
+  }
 }
-function bindClass(cls,fn){
-  document.querySelectorAll('.'+cls).forEach(el=>{
-    el.addEventListener('click',function(e){e.preventDefault();fn();},{passive:false});
-    el.addEventListener('touchend',function(e){e.preventDefault();fn();},{passive:false});
-  });
+document.addEventListener('click',   handleTap, {passive:false});
+document.addEventListener('touchend', handleTap, {passive:false});
+
+// ═══ 자동 새로고침 ═══
+function refreshCurrentScreen(){
+  const active=document.querySelector('.screen.active');
+  if(!active)return;
+  const id=active.id;
+  if(id==='screen-home')renderHome();
+  else if(id==='screen-lb')renderLb();
+  else if(id==='screen-teams')renderTeams();
+  else if(id==='screen-stats')renderStats();
 }
+
 renderHome();
 setSyncStatus(SCRIPT_URL?"live":"offline");
-bindBtn('nav-home',()=>nav('home'));
-bindBtn('nav-lb',()=>nav('lb'));
-bindBtn('nav-stats',()=>nav('stats'));
-bindBtn('nav-teams',()=>nav('teams'));
-bindBtn('nav-setup',()=>nav('setup'));
-bindBtn('tab-indiv',()=>switchTab('indiv'));
-bindBtn('tab-team',()=>switchTab('team'));
-bindBtn('save-btn',saveScores);
-const setupBtn=document.querySelector('.setup-btn');
-if(setupBtn){
-  setupBtn.addEventListener('click',function(e){e.preventDefault();saveUrl();},{passive:false});
-  setupBtn.addEventListener('touchend',function(e){e.preventDefault();saveUrl();},{passive:false});
-}
-const skipLink=document.querySelector('.skip-link');
-if(skipLink){
-  skipLink.addEventListener('click',function(e){e.preventDefault();skipSetup();},{passive:false});
-  skipLink.addEventListener('touchend',function(e){e.preventDefault();skipSetup();},{passive:false});
-}
-const backBtn=document.querySelector('.back-btn');
-if(backBtn){
-  backBtn.addEventListener('click',function(e){e.preventDefault();nav('home');},{passive:false});
-  backBtn.addEventListener('touchend',function(e){e.preventDefault();nav('home');},{passive:false});
-}
-setInterval(()=>{if(document.getElementById("screen-lb").classList.contains("active"))renderLb();if(document.getElementById("screen-teams").classList.contains("active"))renderTeams();if(document.getElementById("screen-stats").classList.contains("active"))renderStats();renderHome();},20000);
-setInterval(async()=>{if(!SCRIPT_URL)return;try{const remote=await fetchFromSheets();if(remote&&!remote.error){saveLocal(remote);if(document.getElementById("screen-lb").classList.contains("active"))renderLb();if(document.getElementById("screen-teams").classList.contains("active"))renderTeams();renderHome();}}catch(e){}},15000);
+setInterval(refreshCurrentScreen,20000);
+setInterval(async()=>{
+  if(!SCRIPT_URL)return;
+  try{
+    const remote=await fetchFromSheets();
+    if(remote&&!remote.error){saveLocal(remote);refreshCurrentScreen();}
+  }catch(e){}
+},15000);
 </script>
 </body>
 </html>
