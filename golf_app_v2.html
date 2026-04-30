@@ -253,7 +253,21 @@ function calcShinperio(scores18){
 function loadLocal(){try{return JSON.parse(localStorage.getItem(LS_SCORES))||{};}catch{return {};}}
 function saveLocal(d){localStorage.setItem(LS_SCORES,JSON.stringify(d));}
 function setSyncStatus(mode){const dot=document.getElementById("sync-dot"),text=document.getElementById("sync-text");dot.className="sync-dot "+(mode==='live'?'live':mode==='syncing'?'syncing':mode==='error'?'error':'');const msgs={live:"🟢 Google Sheets 실시간 연동 중",syncing:"🔄 동기화 중...",offline:"⚪ 오프라인 모드",error:"🔴 서버 연결 실패"};text.textContent=msgs[mode]||msgs.offline;}
-async function postToSheets(gn,ps){if(!SCRIPT_URL)return false;setSyncStatus("syncing");try{await fetch(SCRIPT_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"application/json"},body:JSON.stringify({group:gn,scores:ps})});setSyncStatus("live");return true;}catch(e){setSyncStatus("error");return false;}}
+async function postToSheets(gn,ps){
+  if(!SCRIPT_URL)return false;
+  setSyncStatus("syncing");
+  try{
+    // no-cors는 응답을 받을 수 없으므로 fire-and-forget + 5초 타임아웃
+    var postPromise=fetch(SCRIPT_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"application/json"},body:JSON.stringify({group:gn,scores:ps})});
+    var timeoutPromise=new Promise(function(resolve){setTimeout(function(){resolve(null);},5000);});
+    await Promise.race([postPromise,timeoutPromise]);
+    setSyncStatus("live");
+    return true;
+  }catch(e){
+    setSyncStatus("error");
+    return false;
+  }
+}
 async function fetchFromSheets(){if(!SCRIPT_URL)return null;setSyncStatus("syncing");try{const res=await fetch(SCRIPT_URL+"?action=all");const data=await res.json();setSyncStatus("live");return data;}catch(e){setSyncStatus("error");return null;}}
 function nav(screen){document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active"));document.getElementById("screen-"+screen).classList.add("active");const nb=document.getElementById("nav-"+screen);if(nb)nb.classList.add("active");if(screen==="home")renderHome();if(screen==="lb")renderLb();if(screen==="teams")renderTeams();if(screen==="setup")renderSetup();if(screen==="stats")renderStats();}
 function openGroup(name){currentGroup=name;try{sessionStorage.setItem("lastGroup",name);}catch(e){}document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active"));document.getElementById("screen-score").classList.add("active");document.getElementById("nav-home").classList.add("active");document.getElementById("score-title").textContent=name;renderScoreEntry(name);}
