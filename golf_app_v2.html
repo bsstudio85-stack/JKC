@@ -229,6 +229,23 @@ const PLAYER_TEAM={};
 Object.entries(TEAMS).forEach(([t,ms])=>ms.forEach(m=>PLAYER_TEAM[m]=t));
 const LS_SCORES="golf26_scores",LS_URL="golf26_url";
 let SCRIPT_URL=localStorage.getItem(LS_URL)||"",currentGroup=null,lbTab="indiv";
+
+// ═══ 신페리오 엔진 (비밀 고정홀) ═══
+// 파3: 3,6,13,17홀 / 파4: 2,7,11,12,14홀 / 파5: 4,9,18홀
+const _SP=Object.freeze([1,2,3,5,6,8,10,11,12,13,16,17]);
+function getShinperioHoles(){return _SP;}
+
+function calcShinperio(scores18){
+  const valid=scores18.filter(v=>v!==''&&!isNaN(parseInt(v)));
+  if(valid.length<18)return null;
+  const holes=getShinperioHoles();
+  const gross=scores18.reduce((s,v)=>s+(parseInt(v)||0),0);
+  const sp12=holes.reduce((s,h)=>s+(parseInt(scores18[h])||0),0);
+  const spBase=sp12*1.5;
+  let hcp=Math.round((spBase-72)*0.8);
+  hcp=Math.max(0,Math.min(36,hcp));
+  return{gross,hcp,net:gross-hcp};
+}
 function loadLocal(){try{return JSON.parse(localStorage.getItem(LS_SCORES))||{};}catch{return {};}}
 function saveLocal(d){localStorage.setItem(LS_SCORES,JSON.stringify(d));}
 function setSyncStatus(mode){const dot=document.getElementById("sync-dot"),text=document.getElementById("sync-text");dot.className="sync-dot "+(mode==='live'?'live':mode==='syncing'?'syncing':mode==='error'?'error':'');const msgs={live:"🟢 Google Sheets 실시간 연동 중",syncing:"🔄 동기화 중...",offline:"⚪ 오프라인 모드",error:"🔴 서버 연결 실패"};text.textContent=msgs[mode]||msgs.offline;}
@@ -252,74 +269,182 @@ async function saveScores(){const btn=document.getElementById("save-btn");btn.di
 function switchTab(t){lbTab=t;document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));document.getElementById("tab-"+t).classList.add("active");renderLb();}
 function renderLb(){const content=document.getElementById("lb-content");lbTab==="indiv"?renderIndiv(content):renderTeamLb(content);}
 function getGross(player){const allScores=loadLocal();for(const[g,ps]of Object.entries(GROUPS)){if(ps.includes(player)){const h=(allScores[g]||{})[player]||[];const t=h.reduce((s,v)=>s+(parseInt(v)||0),0);return t||null;}}return null;}
-function renderIndiv(content){const rows=[];Object.entries(GROUPS).forEach(([g,ps])=>ps.forEach(p=>rows.push({name:p,group:g,team:PLAYER_TEAM[p]||"—",gross:getGross(p)})));rows.sort((a,b)=>{if(!a.gross&&!b.gross)return 0;if(!a.gross)return 1;if(!b.gross)return-1;return a.gross-b.gross;});const medals=["🥇","🥈","🥉"];let html=`<div class="card" style="padding:0;overflow:hidden"><table class="lb-table"><thead><tr><th>순위</th><th>이름</th><th>조</th><th>팀</th><th>GROSS</th></tr></thead><tbody>`;rows.forEach((r,i)=>{const rc=i<3?`r${i+1}`:"";const rank=i<3?medals[i]:i+1;const score=r.gross?`<span class="score-num">${r.gross}</span>`:`<span class="no-score">미입력</span>`;const tname=r.team!=="—"?r.team.replace(/[🦅🐻🐯🐺🦊🦜🦁🐬🐆🐘🦋]\s?/,""):"—";html+=`<tr class="${rc}"><td>${rank}</td><td style="text-align:left;font-weight:600">${r.name}</td><td>${r.group}</td><td><span class="team-badge">${tname}</span></td><td>${score}</td></tr>`;});html+=`</tbody></table></div>`;content.innerHTML=html;}
-function renderTeamLb(content){const rows=Object.entries(TEAMS).map(([tname,members])=>{const scores=members.map(m=>getGross(m));const valid=scores.filter(s=>s!==null);const total=valid.length===members.length?valid.reduce((a,b)=>a+b,0):null;return{name:tname,members,scores,total,filled:valid.length};});rows.sort((a,b)=>{if(!a.total&&!b.total)return b.filled-a.filled;if(!a.total)return 1;if(!b.total)return-1;return a.total-b.total;});const medals=["🥇","🥈","🥉"];let html=`<div class="card" style="padding:0;overflow:hidden"><table class="lb-table"><thead><tr><th>순위</th><th style="text-align:left">팀</th><th>입력</th><th>합산</th></tr></thead><tbody>`;rows.forEach((t,i)=>{const rc=i<3?`r${i+1}`:"";const rank=i<3?medals[i]:i+1;const tot=t.total?`<span class="score-num">${t.total}</span>`:`<span class="no-score">${t.filled}/${t.members.length}</span>`;html+=`<tr class="${rc}"><td>${rank}</td><td style="text-align:left;font-weight:700">${t.name}</td><td style="font-size:11px;color:var(--muted)">${t.filled}/${t.members.length}</td><td>${tot}</td></tr>`;});html+=`</tbody></table></div>`;content.innerHTML=html;}
-function renderTeams(){const content=document.getElementById("teams-content");content.innerHTML="";Object.entries(TEAMS).forEach(([tname,members])=>{const scores=members.map(m=>getGross(m));const allIn=scores.every(s=>s!==null);const total=allIn?scores.reduce((a,b)=>a+b,0):null;const membersHtml=members.map((m,i)=>{const s=scores[i];return`<div class="member-chip">${m}${s?`<span class="ms">${s}</span>`:""}</div>`;}).join("");const card=document.createElement("div");card.className="team-card";card.innerHTML=`<div class="team-header"><span class="team-name">${tname}</span><span>${total?`<span class="team-total-num">${total}</span>`:`<span style="font-size:11px;color:var(--muted)">${scores.filter(s=>s!==null).length}/${members.length} 입력</span>`}</span></div><div class="team-members">${membersHtml}</div>`;content.appendChild(card);});}
+function getScores(player){
+  const allScores=loadLocal();
+  for(const[g,ps]of Object.entries(GROUPS)){
+    if(ps.includes(player)){
+      const holes=(allScores[g]||{})[player]||[];
+      const played=holes.filter(v=>v!==''&&!isNaN(parseInt(v))).length;
+      const gross=played>0?holes.reduce((s,v)=>s+(parseInt(v)||0),0):null;
+      const sp=calcShinperio(holes);
+      return{gross,hcp:sp?sp.hcp:null,net:sp?sp.net:null,complete:sp!==null,played};
+    }
+  }
+  return{gross:null,hcp:null,net:null,complete:false,played:0};
+}
+function renderIndiv(content){
+  const rows=[];
+  Object.entries(GROUPS).forEach(([g,ps])=>ps.forEach(p=>{
+    const s=getScores(p);
+    rows.push({name:p,group:g,team:PLAYER_TEAM[p]||"—",...s});
+  }));
+  const done=rows.filter(r=>r.complete).sort((a,b)=>a.net-b.net);
+  const inProgress=rows.filter(r=>!r.complete&&r.played>0).sort((a,b)=>a.gross-b.gross);
+  const notStarted=rows.filter(r=>!r.complete&&r.played===0);
+  const sorted=[...done,...inProgress,...notStarted];
+  const medals=["🥇","🥈","🥉"];
+  const now=new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
+  let html=`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 14px 4px">
+    <span style="font-size:10px;color:var(--muted)">🏆 NET순위 기준 · 완료자만 확정</span>
+    <span style="font-size:10px;color:var(--muted)">${now} 기준</span>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden"><table class="lb-table">
+  <thead><tr><th>순위</th><th style="text-align:left">이름</th><th>홀</th><th>GROSS</th><th>HCP</th><th style="color:var(--gold-lt)">NET</th></tr></thead><tbody>`;
+  let netRank=0;
+  sorted.forEach((r,i)=>{
+    const isComplete=r.complete;
+    if(isComplete)netRank++;
+    const rc=isComplete&&netRank<=3?`r${netRank}`:"";
+    const rankCell=isComplete
+      ?(netRank<=3?medals[netRank-1]:netRank)
+      :r.played>0
+        ?`<span style="color:var(--gold);font-size:10px">${r.played}H</span>`
+        :`<span style="color:var(--muted);font-size:9px">—</span>`;
+    const grossCell=r.gross!==null
+      ?(isComplete?r.gross:`<span style="color:var(--muted)">${r.gross}</span>`)
+      :`<span class="no-score">—</span>`;
+    const hcpCell=r.hcp!==null
+      ?`<span style="color:#7ef0a8;font-size:11px">-${r.hcp}</span>`
+      :`<span class="no-score">—</span>`;
+    const netCell=r.net!==null
+      ?`<strong style="color:var(--gold-lt)">${r.net}</strong>`
+      :`<span class="no-score">—</span>`;
+    const tname=r.team!=="—"?r.team.replace(/[🦅🐻🐯🐺🦊🦜🦁🐬🐆🐘🦋]\s?/,""):"—";
+    html+=`<tr class="${rc}">
+      <td>${rankCell}</td>
+      <td style="text-align:left;font-weight:500">${r.name}<br><span style="font-size:9px;color:var(--muted)">${tname}</span></td>
+      <td style="font-size:10px;color:${isComplete?'var(--grass)':'var(--gold)'}">${isComplete?'✅':r.played>0?r.played+'/18':'—'}</td>
+      <td>${grossCell}</td>
+      <td>${hcpCell}</td>
+      <td>${netCell}</td>
+    </tr>`;
+  });
+  html+=`</tbody></table></div>`;
+  content.innerHTML=html;
+}
+function renderTeamLb(content){
+  const rows=Object.entries(TEAMS).map(([tname,members])=>{
+    const memberScores=members.map(m=>getScores(m));
+    const allComplete=memberScores.every(s=>s.complete);
+    const grossTotal=memberScores.reduce((a,s)=>a+(s.gross||0),0)||null;
+    const netTotal=allComplete?memberScores.reduce((a,s)=>a+s.net,0):null;
+    const completedCount=memberScores.filter(s=>s.complete).length;
+    const playingCount=memberScores.filter(s=>!s.complete&&s.played>0).length;
+    const totalPlayed=memberScores.reduce((a,s)=>a+s.played,0);
+    return{name:tname,members,memberScores,grossTotal,netTotal,completedCount,playingCount,totalPlayed,allComplete,size:members.length};
+  });
+  const done=rows.filter(r=>r.allComplete).sort((a,b)=>a.netTotal-b.netTotal);
+  const pending=rows.filter(r=>!r.allComplete).sort((a,b)=>b.totalPlayed-a.totalPlayed);
+  const sorted=[...done,...pending];
+  const medals=["🥇","🥈","🥉"];
+  const now=new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
+  let html=`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 14px 4px">
+    <span style="font-size:10px;color:var(--muted)">🦁 팀 NET합산 기준 · 전원완료팀만 확정</span>
+    <span style="font-size:10px;color:var(--muted)">${now} 기준</span>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden"><table class="lb-table">
+  <thead><tr><th>순위</th><th style="text-align:left">팀</th><th>현황</th><th>GROSS합</th><th style="color:var(--gold-lt)">NET합</th></tr></thead><tbody>`;
+  let teamRank=0;
+  sorted.forEach((t,i)=>{
+    if(t.allComplete)teamRank++;
+    const rc=t.allComplete&&teamRank<=3?`r${teamRank}`:"";
+    const rankCell=t.allComplete
+      ?(teamRank<=3?medals[teamRank-1]:teamRank)
+      :`<span style="font-size:9px;color:var(--muted)">${t.completedCount}✅</span>`;
+    const statusCell=t.allComplete
+      ?`<span style="color:var(--grass);font-size:10px">완료</span>`
+      :`<span style="font-size:9px;color:var(--gold)">${t.completedCount}/${t.size}<br>${t.playingCount>0?t.playingCount+'명 진행중':''}</span>`;
+    const grossCell=t.grossTotal>0
+      ?`<span style="color:${t.allComplete?'var(--text)':'var(--muted)'}">${t.grossTotal}</span>`
+      :`<span class="no-score">—</span>`;
+    const netCell=t.netTotal!==null
+      ?`<strong style="color:var(--gold-lt)">${t.netTotal}</strong>`
+      :`<span class="no-score">—</span>`;
+    html+=`<tr class="${rc}">
+      <td>${rankCell}</td>
+      <td style="text-align:left;font-weight:700;font-size:12px">${t.name}</td>
+      <td style="font-size:10px">${statusCell}</td>
+      <td>${grossCell}</td>
+      <td>${netCell}</td>
+    </tr>`;
+  });
+  html+=`</tbody></table></div>`;
+  content.innerHTML=html;
+}
+function renderTeams(){const content=document.getElementById("teams-content");content.innerHTML="";Object.entries(TEAMS).forEach(([tname,members])=>{const memberScores=members.map(m=>getScores(m));const allComplete=memberScores.every(s=>s.complete);const netTotal=allComplete?memberScores.reduce((a,s)=>a+s.net,0):null;const grossTotal=allComplete?memberScores.reduce((a,s)=>a+s.gross,0):null;const filled=memberScores.filter(s=>s.gross!==null).length;const membersHtml=members.map((m,i)=>{const s=memberScores[i];const scoreStr=s.complete?`<span class="ms">${s.gross}<span style="font-size:9px;color:#7ef0a8">(-${s.hcp})</span>=<strong style="color:var(--gold-lt)">${s.net}</strong></span>`:s.gross?`<span class="ms" style="color:var(--muted)">${s.gross}…</span>`:"";return`<div class="member-chip">${m}${scoreStr}</div>`;}).join("");const card=document.createElement("div");card.className="team-card";card.innerHTML=`<div class="team-header"><span class="team-name">${tname}</span><span>${netTotal!==null?`<span class="team-total-num" style="color:var(--gold-lt)">${netTotal}</span><span style="font-size:10px;color:var(--muted);margin-left:4px">(그로스${grossTotal})</span>`:`<span style="font-size:11px;color:var(--muted)">${filled}/${members.length} 완료</span>`}</span></div><div class="team-members">${membersHtml}</div>`;content.appendChild(card);});}
 function renderSetup(){document.getElementById("url-input").value=SCRIPT_URL||"";}
 function saveUrl(){const url=document.getElementById("url-input").value.trim();if(!url||!url.startsWith("https://script.google.com")){showToast("⚠️ 올바른 Apps Script URL을 입력하세요");return;}SCRIPT_URL=url;localStorage.setItem(LS_URL,url);setSyncStatus("live");showToast("✅ Google Sheets 연동 완료!");setTimeout(()=>nav("home"),1200);}
 function skipSetup(){setSyncStatus("offline");nav("home");}
 function showToast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2500);}
 // ═══ STATS ENGINE ═══
-let statsTeamFilter = 'all';
-let statsCat = 'all';
-function getPlayerStats(player) {
-  const allScores = loadLocal();
-  for (const [g, ps] of Object.entries(GROUPS)) {
-    if (ps.includes(player)) {
-      const holes = (allScores[g] || {})[player] || [];
-      let eagle=0, birdie=0, par=0, bogey=0, double=0, triple=0, yap=0, entered=0;
-      for (let h=0; h<18; h++) {
-        const v = parseInt(holes[h]);
-        if (isNaN(v) || !holes[h]) continue;
+let statsTeamFilter='all';
+let statsCat='all';
+function getPlayerStats(player){
+  const allScores=loadLocal();
+  for(const[g,ps]of Object.entries(GROUPS)){
+    if(ps.includes(player)){
+      const holes=(allScores[g]||{})[player]||[];
+      let eagle=0,birdie=0,par=0,bogey=0,double=0,triple=0,yap=0,entered=0;
+      for(let h=0;h<18;h++){
+        const v=parseInt(holes[h]);
+        if(isNaN(v)||!holes[h])continue;
         entered++;
-        const p = PARS[h];
-        const diff = v - p;
-        if (diff <= -2) eagle++;
-        else if (diff === -1) birdie++;
-        else if (diff === 0) par++;
-        else if (diff === 1) bogey++;
-        else if (diff === 2) double++;
-        else if (diff === 3) triple++;
-        else if (diff >= 4) yap++;
+        const p=PARS[h];
+        const diff=v-p;
+        if(diff<=-2)eagle++;
+        else if(diff===-1)birdie++;
+        else if(diff===0)par++;
+        else if(diff===1)bogey++;
+        else if(diff===2)double++;
+        else if(diff===3)triple++;
+        else if(diff>=4)yap++;
       }
-      return { player, group:g, team: PLAYER_TEAM[player]||'—', eagle, birdie, par, bogey, double, triple, yap, entered };
+      return{player,group:g,team:PLAYER_TEAM[player]||'—',eagle,birdie,par,bogey,double,triple,yap,entered};
     }
   }
   return null;
 }
-function getAllStats() {
-  return Object.values(GROUPS).flat().map(p => getPlayerStats(p)).filter(Boolean);
-}
-function renderStats() {
-  const all = getAllStats().filter(s => s.entered > 0);
-  const tfEl = document.getElementById('stats-team-filter');
-  const teams = ['all', ...Object.keys(TEAMS)];
-  tfEl.innerHTML = teams.map(t => {
-    const label = t === 'all' ? '🌐 전체' : t;
-    const active = t === statsTeamFilter ? 'on' : '';
-    return `<button class="filter-chip ${active}" onclick="statsTeam(this,'${t}')">${label}</button>`;
+function getAllStats(){return Object.values(GROUPS).flat().map(p=>getPlayerStats(p)).filter(Boolean);}
+function renderStats(){
+  const all=getAllStats().filter(s=>s.entered>0);
+  const tfEl=document.getElementById('stats-team-filter');
+  const teams=['all',...Object.keys(TEAMS)];
+  tfEl.innerHTML=teams.map(t=>{
+    const label=t==='all'?'🌐 전체':t;
+    const active=t===statsTeamFilter?'on':'';
+    return`<button class="filter-chip ${active}" onclick="statsTeam(this,'${t}')">${label}</button>`;
   }).join('');
-  let filtered = statsTeamFilter === 'all' ? all : all.filter(s => (PLAYER_TEAM[s.player]||'—') === statsTeamFilter);
-  if (filtered.length === 0) {
-    document.getElementById('stats-summary').innerHTML = '';
-    document.getElementById('stats-thead').innerHTML = '';
-    document.getElementById('stats-tbody').innerHTML = `<tr><td colspan="9" class="no-data-msg">아직 입력된 스코어가 없습니다</td></tr>`;
+  let filtered=statsTeamFilter==='all'?all:all.filter(s=>(PLAYER_TEAM[s.player]||'—')===statsTeamFilter);
+  if(filtered.length===0){
+    document.getElementById('stats-summary').innerHTML='';
+    document.getElementById('stats-thead').innerHTML='';
+    document.getElementById('stats-tbody').innerHTML=`<tr><td colspan="9" class="no-data-msg">아직 입력된 스코어가 없습니다</td></tr>`;
     return;
   }
-  const sortKey = statsCat === 'all' ? 'birdie' : statsCat;
-  filtered.sort((a,b) => b[sortKey] - a[sortKey]);
-  const totE = filtered.reduce((s,r)=>s+r.eagle,0);
-  const totB = filtered.reduce((s,r)=>s+r.birdie,0);
-  const totP = filtered.reduce((s,r)=>s+r.par,0);
-  const totBo = filtered.reduce((s,r)=>s+r.bogey,0);
-  const totD = filtered.reduce((s,r)=>s+r.double,0);
-  const totT = filtered.reduce((s,r)=>s+r.triple,0);
-  const totY = filtered.reduce((s,r)=>s+r.yap,0);
-  const topBirdie = filtered.reduce((best,r) => r.birdie > (best?.birdie||0) ? r : best, null);
-  const topEagle  = filtered.reduce((best,r) => r.eagle  > (best?.eagle||0)  ? r : best, null);
-  const topPar    = filtered.reduce((best,r) => r.par    > (best?.par||0)    ? r : best, null);
-  const topBogey  = filtered.reduce((best,r) => r.bogey  > (best?.bogey||0)  ? r : best, null);
-  document.getElementById('stats-summary').innerHTML = `
+  const sortKey=statsCat==='all'?'birdie':statsCat;
+  filtered.sort((a,b)=>b[sortKey]-a[sortKey]);
+  const totE=filtered.reduce((s,r)=>s+r.eagle,0);
+  const totB=filtered.reduce((s,r)=>s+r.birdie,0);
+  const totP=filtered.reduce((s,r)=>s+r.par,0);
+  const totBo=filtered.reduce((s,r)=>s+r.bogey,0);
+  const totD=filtered.reduce((s,r)=>s+r.double,0);
+  const totT=filtered.reduce((s,r)=>s+r.triple,0);
+  const totY=filtered.reduce((s,r)=>s+r.yap,0);
+  const topBirdie=filtered.reduce((best,r)=>r.birdie>(best?.birdie||0)?r:best,null);
+  const topEagle=filtered.reduce((best,r)=>r.eagle>(best?.eagle||0)?r:best,null);
+  const topPar=filtered.reduce((best,r)=>r.par>(best?.par||0)?r:best,null);
+  const topBogey=filtered.reduce((best,r)=>r.bogey>(best?.bogey||0)?r:best,null);
+  document.getElementById('stats-summary').innerHTML=`
     <div class="stat-sum-card"><div class="stat-sum-label">🦅 이글</div><div class="stat-sum-val" style="color:#ffe066">${totE}</div><div class="stat-sum-top">${totE>0?topEagle.player:'-'}</div></div>
     <div class="stat-sum-card"><div class="stat-sum-label">🐦 버디</div><div class="stat-sum-val" style="color:#7ef0a8">${totB}</div><div class="stat-sum-top">${totB>0?topBirdie.player:'-'}</div></div>
     <div class="stat-sum-card"><div class="stat-sum-label">⛳ 파</div><div class="stat-sum-val" style="color:var(--text)">${totP}</div><div class="stat-sum-top">${totP>0?topPar.player:'-'}</div></div>
@@ -329,13 +454,13 @@ function renderStats() {
     <div class="stat-sum-card"><div class="stat-sum-label">🔥 양파+</div><div class="stat-sum-val" style="color:#ff3333">${totY}</div><div class="stat-sum-top">전체</div></div>
     <div class="stat-sum-card"><div class="stat-sum-label">입력 완료</div><div class="stat-sum-val" style="color:var(--gold)">${filtered.length}</div><div class="stat-sum-top">명</div></div>
   `;
-  const catLabel = {eagle:'이글',birdie:'버디',par:'파',bogey:'보기',double:'더블',triple:'트리플',yap:'양파+'};
-  if (statsCat === 'all') {
-    document.getElementById('stats-thead').innerHTML = `<tr><th class="name-col">선수</th><th>조</th><th>🦅</th><th>🐦</th><th>⛳</th><th>🟠</th><th>🔴</th><th>💀</th><th>🔥</th></tr>`;
-    document.getElementById('stats-tbody').innerHTML = filtered.map((r,i) => {
-      const rc = i===0 ? 'top1' : '';
-      const rank = i===0 ? '🥇' : i+1;
-      return `<tr class="${rc}">
+  const catLabel={eagle:'이글',birdie:'버디',par:'파',bogey:'보기',double:'더블',triple:'트리플',yap:'양파+'};
+  if(statsCat==='all'){
+    document.getElementById('stats-thead').innerHTML=`<tr><th class="name-col">선수</th><th>조</th><th>🦅</th><th>🐦</th><th>⛳</th><th>🟠</th><th>🔴</th><th>💀</th><th>🔥</th></tr>`;
+    document.getElementById('stats-tbody').innerHTML=filtered.map((r,i)=>{
+      const rc=i===0?'top1':'';
+      const rank=i===0?'🥇':i+1;
+      return`<tr class="${rc}">
         <td class="name-col">${rank} ${r.player}</td>
         <td style="font-size:10px;color:var(--muted)">${r.group}</td>
         <td>${r.eagle>0?`<span class="stat-pill pill-eagle">${r.eagle}</span>`:`<span class="stat-zero">-</span>`}</td>
@@ -347,17 +472,17 @@ function renderStats() {
         <td>${r.yap>0?`<span class="stat-pill pill-yap">${r.yap}</span>`:`<span class="stat-zero">-</span>`}</td>
       </tr>`;
     }).join('');
-  } else {
-    const key = statsCat;
-    const label = catLabel[key];
-    document.getElementById('stats-thead').innerHTML = `<tr><th class="name-col">선수</th><th>조</th><th>${label}</th><th>비율</th></tr>`;
-    document.getElementById('stats-tbody').innerHTML = filtered.map((r,i) => {
-      const val = r[key];
-      const pct = r.entered > 0 ? Math.round(val/r.entered*100) : 0;
-      const rc = i===0 && val>0 ? 'top1' : '';
-      const rank = i===0 && val>0 ? '🥇' : i+1;
-      const pillClass = {eagle:'pill-eagle',birdie:'pill-birdie',par:'pill-par',bogey:'pill-bogey',double:'pill-double',triple:'pill-triple',yap:'pill-yap'}[key];
-      return `<tr class="${rc}">
+  }else{
+    const key=statsCat;
+    const label=catLabel[key];
+    document.getElementById('stats-thead').innerHTML=`<tr><th class="name-col">선수</th><th>조</th><th>${label}</th><th>비율</th></tr>`;
+    document.getElementById('stats-tbody').innerHTML=filtered.map((r,i)=>{
+      const val=r[key];
+      const pct=r.entered>0?Math.round(val/r.entered*100):0;
+      const rc=i===0&&val>0?'top1':'';
+      const rank=i===0&&val>0?'🥇':i+1;
+      const pillClass={eagle:'pill-eagle',birdie:'pill-birdie',par:'pill-par',bogey:'pill-bogey',double:'pill-double',triple:'pill-triple',yap:'pill-yap'}[key];
+      return`<tr class="${rc}">
         <td class="name-col">${rank} ${r.player}</td>
         <td style="font-size:10px;color:var(--muted)">${r.group}</td>
         <td>${val>0?`<span class="stat-pill ${pillClass}">${val}</span>`:`<span class="stat-zero">-</span>`}</td>
@@ -366,53 +491,49 @@ function renderStats() {
     }).join('');
   }
 }
-function statsTeam(el, team) { statsTeamFilter = team; renderStats(); }
-function statCat(el, cat) {
-  statsCat = cat;
-  document.querySelectorAll('.scat').forEach(b => b.classList.remove('on'));
-  el.classList.add('on');
-  renderStats();
-}
+function statsTeam(el,team){statsTeamFilter=team;renderStats();}
+function statCat(el,cat){statsCat=cat;document.querySelectorAll('.scat').forEach(b=>b.classList.remove('on'));el.classList.add('on');renderStats();}
+
 // ═══ SAFARI-COMPATIBLE EVENT BINDING ═══
-function bindBtn(id, fn) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const clone = el.cloneNode(true);
-  el.parentNode.replaceChild(clone, el);
-  const fresh = document.getElementById(id);
-  fresh.addEventListener('click', function(e) { e.preventDefault(); fn(); }, {passive: false});
-  fresh.addEventListener('touchend', function(e) { e.preventDefault(); fn(); }, {passive: false});
+function bindBtn(id,fn){
+  const el=document.getElementById(id);
+  if(!el)return;
+  const clone=el.cloneNode(true);
+  el.parentNode.replaceChild(clone,el);
+  const fresh=document.getElementById(id);
+  fresh.addEventListener('click',function(e){e.preventDefault();fn();},{passive:false});
+  fresh.addEventListener('touchend',function(e){e.preventDefault();fn();},{passive:false});
 }
-function bindClass(cls, fn) {
-  document.querySelectorAll('.' + cls).forEach(el => {
-    el.addEventListener('click', function(e) { e.preventDefault(); fn(); }, {passive: false});
-    el.addEventListener('touchend', function(e) { e.preventDefault(); fn(); }, {passive: false});
+function bindClass(cls,fn){
+  document.querySelectorAll('.'+cls).forEach(el=>{
+    el.addEventListener('click',function(e){e.preventDefault();fn();},{passive:false});
+    el.addEventListener('touchend',function(e){e.preventDefault();fn();},{passive:false});
   });
 }
 renderHome();
 setSyncStatus(SCRIPT_URL?"live":"offline");
-bindBtn('nav-home',  () => nav('home'));
-bindBtn('nav-lb',    () => nav('lb'));
-bindBtn('nav-stats', () => nav('stats'));
-bindBtn('nav-teams', () => nav('teams'));
-bindBtn('nav-setup', () => nav('setup'));
-bindBtn('tab-indiv', () => switchTab('indiv'));
-bindBtn('tab-team',  () => switchTab('team'));
-bindBtn('save-btn', saveScores);
-const setupBtn = document.querySelector('.setup-btn');
-if (setupBtn) {
-  setupBtn.addEventListener('click', function(e){ e.preventDefault(); saveUrl(); }, {passive:false});
-  setupBtn.addEventListener('touchend', function(e){ e.preventDefault(); saveUrl(); }, {passive:false});
+bindBtn('nav-home',()=>nav('home'));
+bindBtn('nav-lb',()=>nav('lb'));
+bindBtn('nav-stats',()=>nav('stats'));
+bindBtn('nav-teams',()=>nav('teams'));
+bindBtn('nav-setup',()=>nav('setup'));
+bindBtn('tab-indiv',()=>switchTab('indiv'));
+bindBtn('tab-team',()=>switchTab('team'));
+bindBtn('save-btn',saveScores);
+const setupBtn=document.querySelector('.setup-btn');
+if(setupBtn){
+  setupBtn.addEventListener('click',function(e){e.preventDefault();saveUrl();},{passive:false});
+  setupBtn.addEventListener('touchend',function(e){e.preventDefault();saveUrl();},{passive:false});
 }
-const skipLink = document.querySelector('.skip-link');
-if (skipLink) {
-  skipLink.addEventListener('click', function(e){ e.preventDefault(); skipSetup(); }, {passive:false});
-  skipLink.addEventListener('touchend', function(e){ e.preventDefault(); skipSetup(); }, {passive:false});
+const skipLink=document.querySelector('.skip-link');
+if(skipLink){
+  skipLink.addEventListener('click',function(e){e.preventDefault();skipSetup();},{passive:false});
+  skipLink.addEventListener('touchend',function(e){e.preventDefault();skipSetup();},{passive:false});
 }
-const backBtn = document.querySelector('.back-btn');
-if (backBtn) {
-  backBtn.addEventListener('click', function(e){ e.preventDefault(); nav('home'); }, {passive:false});
-  backBtn.addEventListener('touchend', function(e){ e.preventDefault(); nav('home'); }, {passive:false});
+const backBtn=document.querySelector('.back-btn');
+if(backBtn){
+  backBtn.addEventListener('click',function(e){e.preventDefault();nav('home');},{passive:false});
+  backBtn.addEventListener('touchend',function(e){e.preventDefault();nav('home');},{passive:false});
 }
 setInterval(()=>{if(document.getElementById("screen-lb").classList.contains("active"))renderLb();if(document.getElementById("screen-teams").classList.contains("active"))renderTeams();if(document.getElementById("screen-stats").classList.contains("active"))renderStats();renderHome();},20000);
 setInterval(async()=>{if(!SCRIPT_URL)return;try{const remote=await fetchFromSheets();if(remote&&!remote.error){saveLocal(remote);if(document.getElementById("screen-lb").classList.contains("active"))renderLb();if(document.getElementById("screen-teams").classList.contains("active"))renderTeams();renderHome();}}catch(e){}},15000);
